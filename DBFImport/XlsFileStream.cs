@@ -215,7 +215,11 @@ namespace DBFImport
                 return null;
             }
 
-            switch (cell.CellType)
+            var cellType = cell.CellType;
+            if (cellType == CellType.Formula)
+                cellType = cell.CachedFormulaResultType;
+
+            switch (cellType)
             {
                 case CellType.Blank:
                     return null;
@@ -235,7 +239,7 @@ namespace DBFImport
                 case CellType.Unknown:
                     return null;
                 default:
-                    throw new Exception($"Unknown Excel cell value type ({cell.CellType})");
+                    throw new Exception($"Unknown Excel cell value type ({cellType})");
             }
         }
 
