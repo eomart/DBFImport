@@ -54,13 +54,41 @@ namespace DBFImport
             var sheet = excelFile.GetSheetAt(0);
             rowEnumerator = CastEnumerator<XSSFRow>(sheet.GetRowEnumerator());
 
-            try
+            var filenameMeta = Path.Combine(Path.GetDirectoryName(filename), "meta", Path.GetFileName(filename) + ".meta.xlsx");
+            if (File.Exists(filenameMeta))
             {
-                header = ReadHeader();
+                XSSFWorkbook excelFileMeta = null;
+                try
+                {
+                    excelFileMeta = new XSSFWorkbook(filenameMeta);
+
+                    if (excelFileMeta.NumberOfSheets < 1) throw new Exception("Excel file has no sheets");
+
+                    var sheetMeta = excelFileMeta.GetSheetAt(0);
+                    var rowEnumeratorMeta = CastEnumerator<XSSFRow>(sheetMeta.GetRowEnumerator());
+
+                    (header, fieldDescriptors) = ReadHeader(rowEnumeratorMeta);
+                    ValidateHeader();
+                }
+                catch (Exception e)
+                {
+                    throw new Exception("Failed to read meta header", e);
+                }
+                finally
+                {
+                    //excelFileMeta?.Close();
+                }
             }
-            catch (Exception e)
+            else
             {
-                throw new Exception("Failed to read header", e);
+                try
+                {
+                    (header, fieldDescriptors) = ReadHeader(rowEnumerator);
+                }
+                catch (Exception e)
+                {
+                    throw new Exception("Failed to read header", e);
+                }
             }
         }
 
@@ -108,7 +136,40 @@ namespace DBFImport
 
             header.FieldCount = fieldDescriptors.Count;
 
-            return header;
+            return (header, fieldDescriptors);
+        }
+        
+        private static string GetExcelColumnName(int zeroBasedColumn)
+        {
+            List<char> letters = new List<char>() { (char)('A' + (zeroBasedColumn % 26)) };
+            zeroBasedColumn = zeroBasedColumn / 26;
+            while (zeroBasedColumn > 0)
+            {
+                zeroBasedColumn--;
+                letters.Add((char)('A' + (zeroBasedColumn % 26)));
+                zeroBasedColumn = zeroBasedColumn / 26;
+            }
+
+            return new string(letters.Reverse<char>().ToArray());
+        }
+
+        private void ValidateHeader()
+        {
+            if (!rowEnumerator.MoveNext()) throw new Exception("No header row found in original file");
+
+            var cellsRow1 = rowEnumerator.Current.Cells;
+            if (cellsRow1.Count != fieldDescriptors.Count) 
+                throw new Exception($"Number of columns in original file ({cellsRow1.Count}) differs from meta file ({fieldDescriptors.Count})");
+
+            var dataFormatter = new DataFormatter();
+            for (int cellNo = 0; cellNo < cellsRow1.Count; ++cellNo)
+            {
+                string title1 = dataFormatter.FormatCellValue(cellsRow1[cellNo]);
+                string title2 = fieldDescriptors[cellNo].Name;
+                if (string.Compare(title1, title2, StringComparison.InvariantCultureIgnoreCase) != 0)
+                    throw new Exception(
+                        $"Title of column {cellNo + 1} ({GetExcelColumnName(cellNo)}) ({title1}) doesn't match with meta file ({title2})");
+            }
         }
 
         private Record ReadRecord(int recordNo, IReadOnlyList<XlsFieldDescriptor> fieldDescriptors)
