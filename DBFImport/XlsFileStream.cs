@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Data;
@@ -17,13 +17,13 @@ namespace DBFImport
 {
     internal class XlsFileStream : IFileStream
     {
-        private XSSFWorkbook excelFile;
-        private IEnumerator<XSSFRow> rowEnumerator;
+        private readonly XSSFWorkbook excelFile;
+        private readonly IEnumerator<XSSFRow> rowEnumerator;
 
-        private XlsHeader header;
+        private readonly XlsHeader header;
         public IHeader Header => header;
 
-        private IReadOnlyList<XlsFieldDescriptor> fieldDescriptors;
+        private readonly IReadOnlyList<XlsFieldDescriptor> fieldDescriptors;
         public IReadOnlyList<IFieldDescriptor> FieldDescriptors => fieldDescriptors;
 
         public IEnumerable<Record> Records
@@ -68,16 +68,15 @@ namespace DBFImport
         {
             if (excelFile != null)
             {
-                //excelFile.Dispose();
-                excelFile = null;
+                excelFile.Close();
             }
         }
 
-        private XlsHeader ReadHeader()
+        private static (XlsHeader, List<XlsFieldDescriptor>) ReadHeader(IEnumerator<XSSFRow> rowEnumerator)
         {
             var dataFormatter = new DataFormatter();
 
-            header = new XlsHeader();
+            var header = new XlsHeader();
             header.LastUpdate = DateTime.MinValue;
             if (!rowEnumerator.MoveNext()) throw new Exception("No header row found");
 
@@ -107,7 +106,6 @@ namespace DBFImport
                 fieldDescriptors.Add(fieldDescriptor);
             }
 
-            this.fieldDescriptors = fieldDescriptors;
             header.FieldCount = fieldDescriptors.Count;
 
             return header;
