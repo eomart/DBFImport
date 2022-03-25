@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Data;
@@ -294,10 +294,14 @@ namespace DBFImport
                         if (scale.HasValue)
                             throw new Exception($"SQL datatype {sqlDbType} must not have a precision ({scale})");
                         break;
-                    case SqlDbType.Char:
-                    case SqlDbType.NChar:
                     case SqlDbType.VarChar:
                     case SqlDbType.NVarChar:
+                        // No lengthOrPrecision --> max
+                        if (scale.HasValue)
+                            throw new Exception($"SQL datatype {sqlDbType} must not have a precision ({scale})");
+                        break;
+                    case SqlDbType.Char:
+                    case SqlDbType.NChar:
                     case SqlDbType.Float:
                         if (!lengthOrPrecision.HasValue)
                             throw new Exception($"SQL datatype {sqlDbType} must have a length");
@@ -320,7 +324,7 @@ namespace DBFImport
                 // NVARCHAR ( 64 )   ^(\w+)(?:\s*\(\s*(\d+)\s*\))?$
                 // DECIMAL (15, 5)   ^(\w+)(?:\s*\(\s*(\d+)(?:\s*,\s*(\d+))?\s*\))?$
 
-                var match = Regex.Match(sqlDataTypeString, @"^(\w+)(?:\s*\(\s*(\d+)(?:\s*,\s*(\d+))?\s*\))?$", RegexOptions.IgnoreCase);
+                var match = Regex.Match(sqlDataTypeString, @"^(\w+)(?:\s*\(\s*(max|\d+)(?:\s*,\s*(\d+))?\s*\))?$", RegexOptions.IgnoreCase);
                 if (!match.Success)
                 {
                     throw new Exception($"Could not parse data type '{sqlDataTypeString}'");
@@ -330,10 +334,12 @@ namespace DBFImport
                 string lengthOrPrecisionText = match.Groups[2].Success ? match.Groups[2].Value : null;
                 string scaleText = match.Groups[3].Success ? match.Groups[3].Value : null;
 
-                if (lengthOrPrecisionText != null)
-                    lengthOrPrecision = byte.Parse(lengthOrPrecisionText);
-                else
+                if (lengthOrPrecisionText == null)
                     lengthOrPrecision = null;
+                else if (string.Compare(lengthOrPrecisionText, "max", StringComparison.InvariantCultureIgnoreCase) == 0)
+                    lengthOrPrecision = null;
+                else
+                    lengthOrPrecision = byte.Parse(lengthOrPrecisionText);
 
                 if (scaleText != null)
                     scale = byte.Parse(scaleText);
@@ -396,10 +402,14 @@ namespace DBFImport
                     case SqlDbType.Time:
                     case SqlDbType.Real:
                         return new SqlParameter(name, SqlDbType);
-                    case SqlDbType.Char:
-                    case SqlDbType.NChar:
                     case SqlDbType.VarChar:
                     case SqlDbType.NVarChar:
+                        if (LengthOrPrecision.HasValue)
+                            return new SqlParameter(name, SqlDbType, LengthOrPrecision.Value);
+                        else
+                            return new SqlParameter(name, SqlDbType, -1);
+                    case SqlDbType.Char:
+                    case SqlDbType.NChar:
                     case SqlDbType.Float:
                         return new SqlParameter(name, SqlDbType, LengthOrPrecision.GetValueOrDefault(0));
                     case SqlDbType.Decimal:
