@@ -2,7 +2,9 @@
   "profiles": {
     "DBFImport": {
       "commandName": "Project",
-      "commandLineArgs": "--path \"C:\\Data\\My DBF files\\*.DBF\" --server \"DEVSERVER\\SQL2017\" --database \"ImportedDbfFiles\""
+      //"commandLineArgs": "--path \"C:\\DBFs\\*.DBF\" --deleteInfo --connectionstring \"Server=plenumwebdev;Database=VentasCAN;User=ap_inventarios_dev;Password=y9FpAkdRHhp8JkJt;MultipleActiveResultSets=True;TrustServerCertificate=True"
+      "commandLineArgs": "--path \"C:\\DBFs\\*.DBF\" --create --connectionstring \"Server=MIBOFFILL\\SQLEXPRESS; Database=dbfToSQL;  Integrated Security=True; Trusted_Connection=true; Encrypt=No;TrustServerCertificate=Yes"
+
     }
   }
 }

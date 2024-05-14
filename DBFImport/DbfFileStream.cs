@@ -205,8 +205,8 @@ namespace DBFImport
             try
             {
                 byte status = binaryReader.ReadByte();
-                if (status != 0x20 && status != 0x2A)
-                    throw new NotSupportedException($"Unknown record status ({status})");
+                //if (status != 0x20 && status != 0x2A)
+                //    throw new NotSupportedException($"Unknown record status ({status})");
 
                 if (status == 0x2A)
                 {
@@ -350,7 +350,7 @@ namespace DBFImport
                 return false;
 
             if (ch == '?' || ch == ' ')
-                return null;
+                return false;
 
             throw new NotSupportedException($"Unknown logical value ({ch})");
         }
@@ -360,7 +360,8 @@ namespace DBFImport
             string text = System.Text.Encoding.ASCII.GetString(data).TrimStart();
 
             if (text == "")
-                return null;
+                text = "0";
+                //return null;
 
             if (text.StartsWith('.'))
                 text = '0' + text;

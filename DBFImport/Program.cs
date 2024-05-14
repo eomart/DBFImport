@@ -40,6 +40,12 @@ namespace DBFImport
             [Option("nologo", Required = false, HelpText = "Don't show application title and copyright")]
             public bool NoLogo { get; set; }
 
+            [Option("create", Required = false, HelpText = "Crear tablas")]
+            public bool CreateTable { get; set; }
+
+            [Option("deleteInfo", Required = false, HelpText = "Limpiar tablas")]
+            public bool deleteTable { get; set; }
+
             [Usage]
             public static IEnumerable<Example> Examples
             {
@@ -49,24 +55,24 @@ namespace DBFImport
                         new Example("Imports DBF files",
                             new Options
                             {
-                                DbfPath = @"c:\Data\My DBF files\*.DBF",
-                                Server = @"DEVSERVER\SQL2017",
-                                Database = "ImportedDbfFiles",
+                               DbfPath = @"C:\DBFs\*.DBF",
+                                Server = @"MIBOFFILL\SQLEXPRESS",
+                                Database = "dbfToSQL",
                             }),
-                        new Example("Imports DBF files, and decode text using code page 1252",
-                            new Options
-                            {
-                                DbfPath = @"c:\Data\My DBF files\*.DBF",
-                                Server = @"DEVSERVER\SQL2017",
-                                Database = "ImportedDbfFiles",
-                                CodePage = 1252
-                            }),
-                        new Example("Imports DBF files, and connect to SQL Server using connection string",
-                            new Options
-                            {
-                                DbfPath = @"c:\Data\My DBF files\*.DBF",
-                                ConnectionString = @"Server=myServerAddress;Database=myDataBase;User Id=myUsername;Password=myPassword",
-                            }),
+                        //new Example("Imports DBF files, and decode text using code page 1252",
+                        //    new Options
+                        //    {
+                        //        DbfPath = @"c:\Data\My DBF files\*.DBF",
+                        //        Server = @"DEVSERVER\SQL2017",
+                        //        Database = "ImportedDbfFiles",
+                        //        CodePage = 1252
+                        //    }),
+                    //    new Example("Imports DBF files, and connect to SQL Server using connection string",
+                    //        new Options
+                    //        {
+                    //            DbfPath = @"C:\DBFs\*.DBF",
+                    //            ConnectionString = @"Server=MIBOFFILL\SQLEXPRESS;Database=dbfToSQL",
+                    //       }),
                     };
                 }
             }
@@ -113,7 +119,9 @@ namespace DBFImport
             }
 
             int codepage = options.CodePage;
-            bool noBulkCopy = options.NoBulkCopy;
+            bool noBulkCopy = true;
+            bool createTable = options.CreateTable;
+            bool deleteTable = options.deleteTable;
 
             int failedFiles = 0;
             int succeededFiles = 0;
@@ -124,7 +132,7 @@ namespace DBFImport
                 int totalInsertCount = 0;
                 if (File.Exists(dbfPath))
                 {
-                    int insertCount = ProcessFile(dbfPath, connectionString, codepage, noBulkCopy);
+                    int insertCount = ProcessFile(dbfPath, connectionString, codepage, noBulkCopy, createTable, deleteTable);
                     if (insertCount >= 0)
                     {
                         totalInsertCount += insertCount;
@@ -154,7 +162,7 @@ namespace DBFImport
 
                     foreach (var file in Directory.EnumerateFiles(path, mask))
                     {
-                        int insertCount = ProcessFile(file, connectionString, codepage, noBulkCopy);
+                        int insertCount = ProcessFile(file, connectionString, codepage, noBulkCopy, createTable, deleteTable);
                         if (insertCount >= 0)
                         {
                             totalInsertCount += insertCount;
@@ -194,7 +202,7 @@ namespace DBFImport
             return failedFiles;
         }
 
-        static int ProcessFile(string filename, string connectionString, int codepage, bool noBulkCopy)
+        static int ProcessFile(string filename, string connectionString, int codepage, bool noBulkCopy, bool createTable, bool deleteInfo)
         {
             Console.WriteLine($"Processing {filename}...");
             Stopwatch sw = Stopwatch.StartNew();
@@ -211,7 +219,7 @@ namespace DBFImport
                         Console.WriteLine($"  Records:          {recordCount.Value}");
                     Console.Write("  Importing:        ");
 
-                    int insertCount = CreateTable(connectionString, table, dbfFileStream.FieldDescriptors, dbfFileStream.Records, noBulkCopy);
+                    int insertCount = CreateTable(connectionString, table, dbfFileStream.FieldDescriptors, dbfFileStream.Records, noBulkCopy, createTable, deleteInfo);
                     Console.WriteLine($"  Inserted:         {insertCount}");
                     Console.WriteLine($"  Duration:         {sw.Elapsed}");
 
@@ -232,7 +240,7 @@ namespace DBFImport
 
         private static int CreateTable(string connectionString, string table, 
             IReadOnlyList<IFieldDescriptor> fieldDescriptors, IEnumerable<Record> records,
-            bool noBulkCopy)
+            bool noBulkCopy, bool createTable, bool deleteInfo)
         {
             using (SqlConnection conn = new SqlConnection(connectionString))
             {
@@ -245,43 +253,63 @@ namespace DBFImport
                     throw new Exception("Failed to connect to database", e);
                 }
 
-                try
+                if (createTable)
                 {
-                    using (SqlCommand cmd = conn.CreateCommand())
+                    try
                     {
-                        cmd.CommandText = $"IF OBJECT_ID('{table}', 'U') IS NOT NULL DROP TABLE [{table}];";
-                        cmd.ExecuteNonQuery();
+                        using (SqlCommand cmd = conn.CreateCommand())
+                        {
+                            cmd.CommandText = $"IF OBJECT_ID('{table}', 'U') IS NOT NULL DROP TABLE [{table}];";
+                            cmd.ExecuteNonQuery();
+                        }
                     }
-                }
-                catch (Exception e)
-                {
-                    throw new Exception($"Failed to drop existing table {table}", e);
+                    catch (Exception e)
+                    {
+                        throw new Exception($"Failed to drop existing table {table}", e);
+                    }
+
+                    try
+                    {
+                        using (SqlCommand cmd = conn.CreateCommand())
+                        {
+                            StringBuilder sb = new StringBuilder();
+                            sb.AppendLine($"CREATE TABLE [{table}] ([id_{table.ToLower()}] [int] CONSTRAINT pk_ven_{table.ToLower()} PRIMARY KEY CLUSTERED IDENTITY(1,1) NOT NULL, ");
+                            bool first = true;
+                            foreach (var fieldDescriptor in fieldDescriptors)
+                            {
+                                if (first)
+                                    first = false;
+                                else
+                                    sb.Append(", ");
+                                sb.AppendLine($"[{fieldDescriptor.Name.ToLower()}] {fieldDescriptor.GetSqlDataType()} NOT NULL");
+                            }
+                            sb.AppendLine($")");
+                            cmd.CommandText = sb.ToString();
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        throw new Exception($"Failed to create table {table}", e);
+                    }
                 }
 
-                try
+                if (deleteInfo)
                 {
-                    using (SqlCommand cmd = conn.CreateCommand())
+                    try
                     {
-                        StringBuilder sb = new StringBuilder();
-                        sb.AppendLine($"CREATE TABLE [{table}] (");
-                        bool first = true;
-                        foreach (var fieldDescriptor in fieldDescriptors)
+                        using (SqlCommand cmd = conn.CreateCommand())
                         {
-                            if (first)
-                                first = false;
-                            else
-                                sb.Append(", ");
-                            sb.AppendLine($"[{fieldDescriptor.Name}] {fieldDescriptor.GetSqlDataType()}");
+                            cmd.CommandText = $"DELETE FROM {table}";
+                            cmd.ExecuteNonQuery();
                         }
-                        sb.AppendLine($")");
-                        cmd.CommandText = sb.ToString();
-                        cmd.ExecuteNonQuery();
+                    }
+                    catch (Exception e)
+                    {
+                        throw new Exception($"Failed to delete info table {table}", e);
                     }
                 }
-                catch (Exception e)
-                {
-                    throw new Exception($"Failed to create table {table}", e);
-                }
+
 
                 try
                 {
@@ -351,9 +379,9 @@ namespace DBFImport
                         first = false;
                     else
                         sb.Append(", ");
-                    sb.Append($"@p{no}");
+                    sb.Append($"@{fieldDescriptors[no].Name}");
 
-                    cmd.Parameters.Add(fieldDescriptor.GetSqlParameter($"@p{no}"));
+                    cmd.Parameters.Add(fieldDescriptor.GetSqlParameter($"@{fieldDescriptors[no].Name}"));
 
                     no++;
                 }
@@ -370,10 +398,29 @@ namespace DBFImport
                             no = 0;
                             foreach (var field in record.Fields)
                             {
-                                cmd.Parameters[$"@p{no}"].Value = field ?? DBNull.Value;
+                                object defaultValue = null;
+                                if (field == null)
+                                {
+                                    var a = fieldDescriptors[no].GetSqlDataType();
+                                    if (a.Contains("DECIMAL") || a.Contains("INT") || a.Contains("FLOAT"))
+                                    {
+                                        defaultValue = 0;
+                                    }
+                                    if (a.Contains("VARCHAR"))
+                                    {
+                                        defaultValue = "";
+                                    }
+                                    
+                                }
+                               
+                                
+                                cmd.Parameters[$"@{fieldDescriptors[no].Name}"].Value = field ?? (defaultValue ?? DBNull.Value);
                                 no++;
                             }
-
+                            //foreach (SqlParameter parameter in cmd.Parameters)
+                            //{
+                            //    Console.WriteLine(parameter.ParameterName + ": " + parameter.Value);
+                            //}
                             cmd.Transaction = transaction;
                             cmd.ExecuteNonQuery();
                             insertCount++;
