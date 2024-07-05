@@ -281,7 +281,13 @@ namespace DBFImport
                                     first = false;
                                 else
                                     sb.Append(", ");
-                                sb.AppendLine($"[{fieldDescriptor.Name.ToLower()}] {fieldDescriptor.GetSqlDataType()} NOT NULL");
+                                var fieldType = fieldDescriptor.GetSqlDataType();
+                                string defaultValue = "";
+                                string nullValues = "NOT NULL";
+                                if (fieldType.Contains("VARCHAR")) defaultValue = "DEFAULT ''";
+                                if (fieldType.Contains("DECIMAL")) defaultValue = "DEFAULT 0.0";
+                                if (fieldType.Contains("DATETIME")) nullValues = "";
+                                sb.AppendLine($"[{fieldDescriptor.Name.ToLower()}] {fieldType} {defaultValue} {nullValues}");
                             }
                             sb.AppendLine($")");
                             cmd.CommandText = sb.ToString();
